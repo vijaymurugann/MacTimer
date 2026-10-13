@@ -30,6 +30,8 @@ final class TrackerViewModel: ObservableObject, @unchecked Sendable {
     @Published var eyeCareTimeRemaining: TimeInterval = 1200
     @Published var isEyeCareEnabled: Bool = Prefs.eyeCareEnabled
     @Published var isTrackWebsitesEnabled: Bool = Prefs.trackWebsitesEnabled
+    @Published var hideThresholdSeconds: Int = Prefs.hideThresholdSeconds
+    @Published var hideSubOneMinute: Bool = Prefs.hideSubOneMinute
 
     let tracker: ScreenTimeTracker
     let eyeCareManager: EyeCareManager
@@ -72,6 +74,8 @@ final class TrackerViewModel: ObservableObject, @unchecked Sendable {
         isPaused         = tracker.isPaused
         pauseRemaining   = tracker.pauseRemaining
         isTrackWebsitesEnabled = Prefs.trackWebsitesEnabled
+        hideThresholdSeconds   = Prefs.hideThresholdSeconds
+        hideSubOneMinute       = Prefs.hideSubOneMinute
 
         totalDuration   = entries.reduce(0.0) { $0 + $1.duration }
         appsCount       = entries.count
@@ -98,8 +102,11 @@ final class TrackerViewModel: ObservableObject, @unchecked Sendable {
             }
         }
 
+        currentAppName = tracker.currentAppName
+        currentBundleId = tracker.currentBundleId
         currentDomain = tracker.currentDomain
         currentPageTitle = tracker.currentPageTitle
+        isIdle = tracker.isIdle
         eyeCareTimeRemaining = eyeCareManager.timeUntilNextBreak
         isEyeCareEnabled = Prefs.eyeCareEnabled
     }
@@ -112,6 +119,19 @@ final class TrackerViewModel: ObservableObject, @unchecked Sendable {
 
     func updateBrowserTrackingSettings() {
         isTrackWebsitesEnabled = Prefs.trackWebsitesEnabled
+        refreshAll()
+    }
+
+    func updateFilterThreshold(_ seconds: Int) {
+        Prefs.hideThresholdSeconds = seconds
+        hideThresholdSeconds = seconds
+        hideSubOneMinute = seconds > 0
+        refreshAll()
+    }
+
+    func updateFilterSettings() {
+        hideThresholdSeconds = Prefs.hideThresholdSeconds
+        hideSubOneMinute = Prefs.hideSubOneMinute
         refreshAll()
     }
 

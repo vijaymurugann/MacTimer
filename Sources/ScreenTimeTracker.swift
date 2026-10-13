@@ -47,12 +47,19 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
         setupObservers()
         startTimers()
 
-        if let active = NSWorkspace.shared.frontmostApplication {
+        if let active = NSWorkspace.shared.frontmostApplication, !isSelf(active) {
             startSession(for: active)
         }
     }
 
     // ── NSWorkspace Notifications ─────────────────────────────────────────────
+
+    private func isSelf(_ app: NSRunningApplication) -> Bool {
+        if app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return true }
+        if let bundle = app.bundleIdentifier, bundle == Bundle.main.bundleIdentifier || bundle == "com.vijay.mactimer" { return true }
+        if let name = app.localizedName, name == "MacTimer" { return true }
+        return false
+    }
 
     private func setupObservers() {
         let nc = NSWorkspace.shared.notificationCenter
@@ -69,6 +76,18 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
     @objc private func appDidActivate(_ note: Notification) {
         guard !isIdle, !isPaused else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        if isSelf(app) { return }
+
+        let bundle = app.bundleIdentifier ?? ""
+        if bundle == currentBundleId && currentSession != nil {
+            // Already tracking this app! Just re-check active tab if browser
+            let name = app.localizedName ?? bundle
+            if Prefs.trackWebsitesEnabled && BrowserTracker.shared.isSupportedBrowser(bundleId: bundle) {
+                checkActiveBrowserTab(bundleId: bundle, appName: name)
+            }
+            return
+        }
+
         endCurrentSession()
         startSession(for: app)
     }
@@ -98,7 +117,7 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
 
     @objc private func screenDidWake() {
         isIdle = false
-        if !isPaused, let active = NSWorkspace.shared.frontmostApplication {
+        if !isPaused, let active = NSWorkspace.shared.frontmostApplication, !isSelf(active) {
             startSession(for: active)
         }
     }
@@ -203,7 +222,7 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
     // ── Session Control ───────────────────────────────────────────────────────
 
     private func startSession(for app: NSRunningApplication) {
-        guard !isPaused else { return }
+        guard !isPaused, !isSelf(app) else { return }
         let name   = app.localizedName ?? app.bundleIdentifier ?? "Unknown"
         let bundle = app.bundleIdentifier ?? "unknown"
         currentSession  = AppSession(appName: name, bundleIdentifier: bundle, startTime: Date())
@@ -269,8 +288,10 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
                   !self.isIdle,
                   self.currentBundleId == bundleId else { return }
 
-            let newDomain = tabInfo?.domain
-            let newTitle = tabInfo?.title
+            guard let tabInfo = tabInfo else { return }
+
+            let newDomain = tabInfo.domain
+            let newTitle = tabInfo.title
 
             if newDomain != self.currentDomain {
                 if let cur = self.currentSession, cur.domain == nil, self.currentDomain == nil {
@@ -317,7 +338,7 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
         let startOfDay = calendar.startOfDay(for: Date())
         let now = Date()
 
-        var all = sessions
+        var all = sessions.filter { $0.appName != "MacTimer" && $0.bundleIdentifier != "com.vijay.mactimer" && $0.bundleIdentifier != (Bundle.main.bundleIdentifier ?? "") }
         if let cur = currentSession, !isPaused, !isIdle {
             var live = cur
             live.endTime = now
@@ -333,7 +354,7 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
 
     /// Any day's app totals with nested browser website sub-menus
     func summaryForDate(_ dateString: String, includeLive: Bool = false) -> [AppSummary] {
-        var all = sessions
+        var all = sessions.filter { $0.appName != "MacTimer" && $0.bundleIdentifier != "com.vijay.mactimer" && $0.bundleIdentifier != (Bundle.main.bundleIdentifier ?? "") }
         let isToday = (dateString == dateFmt.string(from: Date()))
         if isToday, includeLive, var cur = currentSession, !isPaused, !isIdle {
             cur.endTime = Date()
@@ -358,11 +379,22 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
         let totalDaySeconds = appTotals.values.reduce(0.0) { $0 + $1.duration }
         let sorted = appTotals.sorted { $0.value.duration > $1.value.duration }
 
-        return sorted.map { (name, info) in
+        return sorted.compactMap { (name, info) in
+            if name == "MacTimer" || info.bundle == "com.vijay.mactimer" || info.bundle == (Bundle.main.bundleIdentifier ?? "") {
+                return nil
+            }
+            let isAppActive = (isToday && name == self.currentAppName && !self.isIdle && !self.isPaused)
+
+            // Filter out short duration apps unless currently active
+            let threshold = Double(Prefs.hideThresholdSeconds)
+            if threshold > 0 && info.duration < threshold && !isAppActive {
+                return nil
+            }
+
             let pct = totalDaySeconds > 0 ? (info.duration / totalDaySeconds) : 0.0
             let topDom = info.domains.max(by: { $0.value.duration < $1.value.duration })?.key
 
-            let subItems: [WebsiteSubItem] = info.domains
+            var subItems: [WebsiteSubItem] = info.domains
                 .sorted { $0.value.duration > $1.value.duration }
                 .map { (dom, subInfo) in
                     let sitePct = info.duration > 0 ? (subInfo.duration / info.duration) : 0.0
@@ -376,6 +408,11 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
                     )
                 }
 
+            // Filter out short duration tabs unless currently active
+            if threshold > 0 {
+                subItems = subItems.filter { $0.duration >= threshold || $0.isCurrentlyActive }
+            }
+
             return AppSummary(
                 name: name,
                 bundleIdentifier: info.bundle,
@@ -383,7 +420,7 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
                 sessionCount: info.count,
                 percentage: pct,
                 topDomain: topDom,
-                domainsCount: info.domains.count,
+                domainsCount: subItems.count,
                 websites: subItems
             )
         }
@@ -393,7 +430,7 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
     func websitesSummaryForDate(_ dateString: String, includeLive: Bool = false) -> [WebsiteSummary] {
         var all = sessions
         let isToday = (dateString == dateFmt.string(from: Date()))
-        if isToday, includeLive, var cur = currentSession {
+        if isToday, includeLive, var cur = currentSession, !isPaused, !isIdle {
             cur.endTime = Date()
             all.append(cur)
         }
@@ -420,7 +457,12 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
         let totalWebSeconds = siteTotals.values.reduce(0.0) { $0 + $1.duration }
         let sorted = siteTotals.sorted { $0.value.duration > $1.value.duration }
 
-        return sorted.map { (dom, info) in
+        return sorted.compactMap { (dom, info) in
+            let isActive = (isToday && dom == self.currentDomain && !self.isIdle && !self.isPaused)
+            let threshold = Double(Prefs.hideThresholdSeconds)
+            if threshold > 0 && info.duration < threshold && !isActive {
+                return nil
+            }
             let pct = totalWebSeconds > 0 ? (info.duration / totalWebSeconds) : 0.0
             return WebsiteSummary(
                 domain: dom,

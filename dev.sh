@@ -3,7 +3,7 @@
 # Watches Sources/ for changes, rebuilds, and relaunches the app automatically.
 # Usage: ./dev.sh
 
-APP=".build/release/MacTimer"
+APP=".build/debug/MacTimer"
 PID_FILE="/tmp/mactimer_dev.pid"
 
 GREEN='\033[0;32m'
@@ -32,38 +32,34 @@ kill_app() {
 build_and_launch() {
     echo -e "${YELLOW}⚡ Change detected — rebuilding...${RESET}"
 
-    # Build
-    if swift build -c release 2>&1 | grep -E "error:|Build complete|warning:"; then
-        if swift build -c release > /dev/null 2>&1; then
-            echo -e "${GREEN}✅ Build complete — relaunching...${RESET}"
-            kill_app
-            sleep 0.3
-            "$APP" &
-            echo $! > "$PID_FILE"
-            echo -e "${GREEN}🚀 Running (PID: $(cat $PID_FILE))${RESET}"
-            echo ""
-        else
-            echo -e "${RED}❌ Build failed — fix errors and save again${RESET}"
-            echo ""
-        fi
+    # Fast incremental debug build
+    if swift build; then
+        echo -e "${GREEN}✅ Build complete — relaunching...${RESET}"
+        kill_app
+        sleep 0.1
+        "$APP" &
+        echo $! > "$PID_FILE"
+        echo -e "${GREEN}🚀 Running (PID: $(cat $PID_FILE))${RESET}\n"
+    else
+        echo -e "${RED}❌ Build failed — fix errors and save again${RESET}\n"
     fi
 }
 
-# Initial build + launch
+# Cleanup on exit (Ctrl+C)
+trap 'echo -e "\n${CYAN}Stopping dev mode...${RESET}"; kill_app; exit 0' INT TERM
+
+# Initial debug build + launch
 echo -e "${YELLOW}⚡ Initial build...${RESET}"
-swift build -c release 2>&1 | tail -3
-if [ -f "$APP" ]; then
+if swift build; then
     kill_app
     "$APP" &
     echo $! > "$PID_FILE"
-    echo -e "${GREEN}🚀 Launched (PID: $(cat $PID_FILE))${RESET}"
-    echo ""
+    echo -e "${GREEN}🚀 Launched (PID: $(cat $PID_FILE))${RESET}\n"
+else
+    echo -e "${RED}❌ Initial build failed${RESET}\n"
 fi
 
-# Watch for changes
-fswatch -o Sources/ | while read -r _; do
+# Watch for changes (with 0.3s debouncing)
+fswatch -o -l 0.3 Sources/ | while read -r _; do
     build_and_launch
 done
-
-# Cleanup on exit (Ctrl+C)
-trap 'echo -e "\n${CYAN}Stopping...${RESET}"; kill_app; exit 0' INT TERM

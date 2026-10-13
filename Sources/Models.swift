@@ -235,4 +235,26 @@ enum Prefs {
         }
         set { UserDefaults.standard.set(newValue, forKey: "trackWebsitesEnabled") }
     }
+
+    // ── Filter Short Duration Apps & Tabs ─────────────────────────────────────
+    static var hideThresholdSeconds: Int {
+        get {
+            if let val = UserDefaults.standard.object(forKey: "hideThresholdSeconds") as? Int {
+                return val
+            }
+            if let old = UserDefaults.standard.object(forKey: "hideSubOneMinute") as? Bool, !old {
+                return 0
+            }
+            return 60 // Default is 1 min (60 seconds)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "hideThresholdSeconds")
+            UserDefaults.standard.set(newValue > 0, forKey: "hideSubOneMinute")
+        }
+    }
+
+    static var hideSubOneMinute: Bool {
+        get { hideThresholdSeconds > 0 }
+        set { hideThresholdSeconds = newValue ? 60 : 0 }
+    }
 }

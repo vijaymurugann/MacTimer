@@ -1017,8 +1017,9 @@ struct SettingsView: View {
     @Binding var showSettings: Bool
 
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
-    @State private var trackWebsites = Prefs.trackWebsitesEnabled
-    @State private var idleMins      = Prefs.idleThresholdMinutes
+    @State private var trackWebsites    = Prefs.trackWebsitesEnabled
+    @State private var hideThreshold    = Prefs.hideThresholdSeconds
+    @State private var idleMins         = Prefs.idleThresholdMinutes
     @State private var alertHrs      = Prefs.alertThresholdHours
     @State private var alertsOn      = Prefs.alertsEnabled
     @State private var dailyGoal     = Prefs.dailyGoalHours
@@ -1103,6 +1104,34 @@ struct SettingsView: View {
                         .onChange(of: trackWebsites) { newValue in
                             Prefs.trackWebsitesEnabled = newValue
                             viewModel.updateBrowserTrackingSettings()
+                        }
+                    }
+
+                    // Filter Short Duration / Hide Items Card
+                    BentoSettingCard {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Hide Short Items")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                            Text("Filter out apps & tabs below threshold")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(Theme.textMuted)
+
+                            HStack(spacing: 6) {
+                                ForEach([
+                                    ("30s", 30),
+                                    ("1m", 60),
+                                    ("3m", 180),
+                                    ("5m", 300),
+                                    ("Off", 0)
+                                ], id: \.1) { opt in
+                                    ChipButton(label: opt.0, selected: hideThreshold == opt.1) {
+                                        hideThreshold = opt.1
+                                        Prefs.hideThresholdSeconds = opt.1
+                                        viewModel.updateFilterThreshold(opt.1)
+                                    }
+                                }
+                            }
                         }
                     }
 
