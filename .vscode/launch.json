@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:MacTimer}",
+      "name": "Debug MacTimer",
+      "target": "MacTimer",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug MacTimer"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:MacTimer}",
+      "name": "Release MacTimer",
+      "target": "MacTimer",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release MacTimer"
+    }
+  ]
+}
