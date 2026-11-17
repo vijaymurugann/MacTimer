@@ -73,9 +73,26 @@ PLIST
 echo ""
 echo "✅  Done! $APP_BUNDLE is ready."
 echo ""
-echo "──────────────────────────────────────────"
-echo "  To install (move to /Applications):"
-echo "    cp -r $APP_BUNDLE /Applications/"
-echo ""
-echo "  Or just double-click $APP_BUNDLE to run now."
-echo "──────────────────────────────────────────"
+
+if [ "$1" = "--install" ] || [ "$1" = "install" ]; then
+    echo "📲  Installing $APP_BUNDLE to /Applications..."
+    pkill -x "$APP_NAME" 2>/dev/null || true
+    sleep 0.5
+    rm -rf "/Applications/$APP_BUNDLE"
+    cp -R "$APP_BUNDLE" "/Applications/"
+    echo "🚀  Launching /Applications/$APP_BUNDLE..."
+    open "/Applications/$APP_BUNDLE"
+    echo ""
+    echo "✨  $APP_NAME has been successfully updated and launched from /Applications!"
+else
+    echo "──────────────────────────────────────────"
+    echo "  To install & relaunch in /Applications:"
+    echo "    ./make-app.sh --install"
+    echo ""
+    echo "  Or manually:"
+    echo "    pkill -x $APP_NAME 2>/dev/null || true"
+    echo "    rm -rf /Applications/$APP_BUNDLE"
+    echo "    cp -R $APP_BUNDLE /Applications/"
+    echo "    open /Applications/$APP_BUNDLE"
+    echo "──────────────────────────────────────────"
+fi

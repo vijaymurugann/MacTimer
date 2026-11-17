@@ -17,9 +17,20 @@ enum LaunchAtLogin {
 
     static func enable() {
         cleanupLegacy()
-        // If running from a proper .app bundle → launch via `open` (cleanest approach).
-        // If running directly from binary (dev mode) → use the binary path.
-        let bundlePath = Bundle.main.bundlePath
+        // Unload existing agent if already loaded so launchctl reloads the new configuration
+        if isEnabled {
+            runLaunchctl(["unload", "-w", plistURL.path])
+        }
+
+        // Prefer /Applications/MacTimer.app if installed, otherwise use current bundle
+        let bundlePath: String
+        let installedAppPath = "/Applications/MacTimer.app"
+        if FileManager.default.fileExists(atPath: installedAppPath) {
+            bundlePath = installedAppPath
+        } else {
+            bundlePath = Bundle.main.bundlePath
+        }
+
         let programArgs: [String]
         if bundlePath.hasSuffix(".app") {
             programArgs = ["/usr/bin/open", bundlePath]

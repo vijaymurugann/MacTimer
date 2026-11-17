@@ -30,9 +30,10 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
 
     // ── Private State ─────────────────────────────────────────────────────────
 
-    private var sessions: [AppSession] = []
+    private let database: SessionDatabase
+    private var todaySessions: [AppSession] = []
+    private var cachedDateString: String = ""
     private var currentSession: AppSession?
-    private let logFileURL: URL
     private var idleTimer: Timer?
     private var pauseCheckTimer: Timer?
     private var browserPollTimer: Timer?
@@ -40,15 +41,31 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
     // ── Init ──────────────────────────────────────────────────────────────────
 
     override init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        logFileURL = home.appendingPathComponent("MacTimer-log.json")
+        database = SessionDatabase.shared
         super.init()
-        loadSessions()
+        loadTodaySessions()
         setupObservers()
         startTimers()
 
         if let active = NSWorkspace.shared.frontmostApplication, !isSelf(active) {
             startSession(for: active)
+        }
+    }
+
+    private func loadTodaySessions() {
+        let today = Date()
+        let todayStr = dateFmt.string(from: today)
+        cachedDateString = todayStr
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: today)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay.addingTimeInterval(86400)
+        todaySessions = database.fetchSessions(from: startOfDay, to: endOfDay)
+    }
+
+    private func ensureTodaySessionsUpToDate() {
+        let todayStr = dateFmt.string(from: Date())
+        if cachedDateString != todayStr {
+            loadTodaySessions()
         }
     }
 
@@ -248,8 +265,9 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
         }
         // Ignore micro sessions < 1s (like quick alt-tab glides)
         if s.duration >= 1.0 {
-            sessions.append(s)
-            saveSessions()
+            ensureTodaySessionsUpToDate()
+            todaySessions.append(s)
+            database.insert(session: s)
         }
         currentSession = nil
     }
@@ -334,11 +352,12 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
 
     /// Today's total active duration (including live session)
     func todayTotalDuration() -> TimeInterval {
+        ensureTodaySessionsUpToDate()
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: Date())
         let now = Date()
 
-        var all = sessions.filter { $0.appName != "MacTimer" && $0.bundleIdentifier != "com.vijay.mactimer" && $0.bundleIdentifier != (Bundle.main.bundleIdentifier ?? "") }
+        var all = todaySessions.filter { $0.appName != "MacTimer" && $0.bundleIdentifier != "com.vijay.mactimer" && $0.bundleIdentifier != (Bundle.main.bundleIdentifier ?? "") }
         if let cur = currentSession, !isPaused, !isIdle {
             var live = cur
             live.endTime = now
@@ -354,11 +373,22 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
 
     /// Any day's app totals with nested browser website sub-menus
     func summaryForDate(_ dateString: String, includeLive: Bool = false) -> [AppSummary] {
-        var all = sessions.filter { $0.appName != "MacTimer" && $0.bundleIdentifier != "com.vijay.mactimer" && $0.bundleIdentifier != (Bundle.main.bundleIdentifier ?? "") }
         let isToday = (dateString == dateFmt.string(from: Date()))
-        if isToday, includeLive, var cur = currentSession, !isPaused, !isIdle {
-            cur.endTime = Date()
-            all.append(cur)
+        var all: [AppSession]
+        if isToday {
+            ensureTodaySessionsUpToDate()
+            all = todaySessions.filter { $0.appName != "MacTimer" && $0.bundleIdentifier != "com.vijay.mactimer" && $0.bundleIdentifier != (Bundle.main.bundleIdentifier ?? "") }
+            if includeLive, var cur = currentSession, !isPaused, !isIdle {
+                cur.endTime = Date()
+                all.append(cur)
+            }
+        } else {
+            guard let date = dateFmt.date(from: dateString) else { return [] }
+            let calendar = Calendar.current
+            let startOfDay = calendar.startOfDay(for: date)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay.addingTimeInterval(86400)
+            all = database.fetchSessions(from: startOfDay, to: endOfDay)
+                .filter { $0.appName != "MacTimer" && $0.bundleIdentifier != "com.vijay.mactimer" && $0.bundleIdentifier != (Bundle.main.bundleIdentifier ?? "") }
         }
 
         let daySessions = all.filter { dateFmt.string(from: $0.startTime) == dateString }
@@ -428,11 +458,21 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
 
     /// Any day's website totals
     func websitesSummaryForDate(_ dateString: String, includeLive: Bool = false) -> [WebsiteSummary] {
-        var all = sessions
         let isToday = (dateString == dateFmt.string(from: Date()))
-        if isToday, includeLive, var cur = currentSession, !isPaused, !isIdle {
-            cur.endTime = Date()
-            all.append(cur)
+        var all: [AppSession]
+        if isToday {
+            ensureTodaySessionsUpToDate()
+            all = todaySessions
+            if includeLive, var cur = currentSession, !isPaused, !isIdle {
+                cur.endTime = Date()
+                all.append(cur)
+            }
+        } else {
+            guard let date = dateFmt.date(from: dateString) else { return [] }
+            let calendar = Calendar.current
+            let startOfDay = calendar.startOfDay(for: date)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay.addingTimeInterval(86400)
+            all = database.fetchSessions(from: startOfDay, to: endOfDay)
         }
 
         let daySessions = all.filter {
@@ -521,11 +561,19 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
         let calendar = Calendar.current
         guard let targetDate = dateFmt.date(from: dateString) else { return [] }
 
-        var all = sessions
         let isToday = (dateString == dateFmt.string(from: Date()))
-        if isToday, var cur = currentSession {
-            cur.endTime = Date()
-            all.append(cur)
+        var all: [AppSession]
+        if isToday {
+            ensureTodaySessionsUpToDate()
+            all = todaySessions
+            if var cur = currentSession {
+                cur.endTime = Date()
+                all.append(cur)
+            }
+        } else {
+            let startOfDay = calendar.startOfDay(for: targetDate)
+            let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay.addingTimeInterval(86400)
+            all = database.fetchSessions(from: startOfDay, to: endOfDay)
         }
 
         let startOfDay = calendar.startOfDay(for: targetDate)
@@ -581,28 +629,44 @@ final class ScreenTimeTracker: NSObject, @unchecked Sendable {
         return Date().timeIntervalSince(s.startTime)
     }
 
+    /// Total duration of the currently active app today (including live session)
+    func currentAppTodayDuration() -> TimeInterval {
+        guard !isIdle, !isPaused, let appName = currentAppName, !appName.isEmpty else { return 0 }
+        let bundle = currentBundleId ?? ""
+        if appName == "MacTimer" || bundle == "com.vijay.mactimer" || bundle == (Bundle.main.bundleIdentifier ?? "") {
+            return 0
+        }
+
+        ensureTodaySessionsUpToDate()
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let now = Date()
+
+        var total: TimeInterval = 0
+        for s in todaySessions {
+            let matches = (s.appName == appName) || (!bundle.isEmpty && bundle != "unknown" && s.bundleIdentifier == bundle)
+            if matches {
+                total += s.overlap(withStart: startOfDay, end: now)
+            }
+        }
+
+        if let cur = currentSession {
+            let matches = (cur.appName == appName) || (!bundle.isEmpty && bundle != "unknown" && cur.bundleIdentifier == bundle)
+            if matches {
+                var live = cur
+                live.endTime = now
+                total += live.overlap(withStart: startOfDay, end: now)
+            }
+        }
+
+        return total
+    }
+
     /// Clears all recorded history
     func clearHistory() {
-        sessions.removeAll()
-        saveSessions()
+        database.clearAll()
+        todaySessions.removeAll()
+        currentSession = nil
         onChange?()
-    }
-
-    // ── Persistence ───────────────────────────────────────────────────────────
-
-    private func loadSessions() {
-        guard FileManager.default.fileExists(atPath: logFileURL.path),
-              let data = try? Data(contentsOf: logFileURL) else { return }
-        let dec = JSONDecoder()
-        dec.dateDecodingStrategy = .iso8601
-        sessions = (try? dec.decode([AppSession].self, from: data)) ?? []
-    }
-
-    private func saveSessions() {
-        let enc = JSONEncoder()
-        enc.dateEncodingStrategy = .iso8601
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? enc.encode(sessions) else { return }
-        try? data.write(to: logFileURL, options: .atomic)
     }
 }

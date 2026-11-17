@@ -262,7 +262,7 @@ struct BentoHeroCard: View {
                                 } else {
                                     // Mini live equalizer wave bars
                                     LiveEqualizerView()
-                                    Text("Active Focus Session")
+                                    Text("Today's Usage")
                                         .font(.system(size: 10.5, weight: .medium, design: .rounded))
                                         .foregroundStyle(Theme.textMuted)
                                 }
@@ -271,12 +271,15 @@ struct BentoHeroCard: View {
 
                         Spacer()
 
-                        // Big high-contrast stopwatch
+                        // Big high-contrast stopwatch showing total usage of current app today
                         Text(formatStopwatch(viewModel.currentDuration))
                             .font(.system(size: 24, weight: .black, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(viewModel.isIdle ? Theme.textMuted : Theme.neonVolt)
                             .contentTransition(.numericText())
+                            .help(!viewModel.isIdle && viewModel.currentAppName != nil
+                                  ? "Today's total usage for \(viewModel.currentAppName!): \(formatDuration(viewModel.currentDuration))"
+                                  : "")
                     }
 
                 }
@@ -1025,7 +1028,6 @@ struct SettingsView: View {
     @State private var dailyGoal     = Prefs.dailyGoalHours
     @State private var eyeCareOn     = Prefs.eyeCareEnabled
     @State private var eyeInterval   = Prefs.eyeCareIntervalMinutes
-    @State private var eyeSoundOn    = Prefs.eyeCareSoundEnabled
     @State private var showConfirmClear = false
 
     var body: some View {
@@ -1266,26 +1268,6 @@ struct SettingsView: View {
                                         .clipShape(Capsule())
                                     }
                                     .buttonStyle(.plain)
-                                }
-
-                                HStack {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: eyeSoundOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .foregroundStyle(eyeSoundOn ? Theme.cyan : Theme.textDim)
-                                        Text("Chime on start & finish")
-                                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                                            .foregroundStyle(Theme.textMuted)
-                                    }
-
-                                    Spacer()
-
-                                    Toggle("", isOn: $eyeSoundOn)
-                                        .toggleStyle(.switch)
-                                        .labelsHidden()
-                                        .onChange(of: eyeSoundOn) { newValue in
-                                            Prefs.eyeCareSoundEnabled = newValue
-                                        }
                                 }
                             }
                         }

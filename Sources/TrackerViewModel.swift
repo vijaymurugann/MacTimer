@@ -18,6 +18,7 @@ final class TrackerViewModel: ObservableObject, @unchecked Sendable {
     @Published var currentDomain: String? = nil
     @Published var currentPageTitle: String? = nil
     @Published var currentDuration: TimeInterval = 0
+    @Published var currentSessionDuration: TimeInterval = 0
 
     @Published var isIdle: Bool = false
     @Published var isPaused: Bool = false
@@ -80,7 +81,8 @@ final class TrackerViewModel: ObservableObject, @unchecked Sendable {
         totalDuration   = entries.reduce(0.0) { $0 + $1.duration }
         appsCount       = entries.count
         topAppName      = entries.first?.name ?? "—"
-        currentDuration = tracker.currentSessionDuration()
+        currentDuration = tracker.currentAppTodayDuration()
+        currentSessionDuration = tracker.currentSessionDuration()
     }
 
     /// 1-second tick: smoothly update session stopwatch and pause countdown
@@ -89,9 +91,11 @@ final class TrackerViewModel: ObservableObject, @unchecked Sendable {
             isPaused = true
             pauseRemaining = tracker.pauseRemaining
             currentDuration = 0
+            currentSessionDuration = 0
         } else {
             isPaused = false
-            currentDuration = tracker.currentSessionDuration()
+            currentDuration = tracker.currentAppTodayDuration()
+            currentSessionDuration = tracker.currentSessionDuration()
 
             // If viewing today, also keep the active app's row duration updated in real time
             let todayStr = dateFmt.string(from: Date())

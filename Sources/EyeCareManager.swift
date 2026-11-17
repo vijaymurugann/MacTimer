@@ -58,7 +58,6 @@ final class EyeCareManager: ObservableObject, @unchecked Sendable {
                 secondsRemaining -= 1
             } else {
                 secondsRemaining = 0
-                playBreakSound()
                 dismissBreak()
             }
         } else {
@@ -110,9 +109,7 @@ final class EyeCareManager: ObservableObject, @unchecked Sendable {
     }
 
     private func playBreakSound() {
-        if Prefs.eyeCareSoundEnabled {
-            NSSound(named: "Tink")?.play()
-        }
+        NSSound(named: "Tink")?.play()
     }
 
     // ── Panel Management ──────────────────────────────────────────────────────

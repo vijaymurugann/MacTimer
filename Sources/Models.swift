@@ -219,14 +219,6 @@ enum Prefs {
         set { UserDefaults.standard.set(newValue, forKey: "eyeCareDurationSeconds") }
     }
 
-    static var eyeCareSoundEnabled: Bool {
-        get {
-            guard UserDefaults.standard.object(forKey: "eyeCareSoundEnabled") != nil else { return true }
-            return UserDefaults.standard.bool(forKey: "eyeCareSoundEnabled")
-        }
-        set { UserDefaults.standard.set(newValue, forKey: "eyeCareSoundEnabled") }
-    }
-
     // ── Browser Website Tracking ──────────────────────────────────────────────
     static var trackWebsitesEnabled: Bool {
         get {
