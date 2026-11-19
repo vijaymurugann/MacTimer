@@ -8,4 +8,6 @@ DerivedData/
 .netrc
 *.dmg
 .dmg_staging
+.clang-cache/
+.vscode/
 
